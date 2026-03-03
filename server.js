@@ -70,14 +70,20 @@ app.use(hpp());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS Configuration
-app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+// CORS: allow one origin (CLIENT_URL) or several (comma-separated), e.g. "http://localhost:5173,https://dimgrey-alligator-158844.hostingersite.com"
+const allowedOrigins = process.env.CLIENT_URL
+    ? process.env.CLIENT_URL.split(',').map(s => s.trim()).filter(Boolean)
+    : ['http://localhost:5173'];
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) callback(null, origin || allowedOrigins[0]);
+        else callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     optionsSuccessStatus: 200,
-    // Allow image requests
     exposedHeaders: ['Content-Type', 'Content-Length'],
-}));
+};
+app.use(cors(corsOptions));
 
 // Database Connection
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/ecommerce')
@@ -105,10 +111,14 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/dailydeals', dailyDealRoutes);
 
 const __dirname1 = path.resolve();
-// Serve static files from uploads directory with CORS headers
+// Helper: set CORS for /uploads from same allowed origins
+function getAllowOrigin(req) {
+    const origin = req.get('Origin');
+    if (origin && allowedOrigins.includes(origin)) return origin;
+    return allowedOrigins[0] || 'http://localhost:5173';
+}
 app.use('/uploads', (req, res, next) => {
-    // Set CORS headers for image requests
-    res.header('Access-Control-Allow-Origin', process.env.CLIENT_URL || 'http://localhost:5173');
+    res.header('Access-Control-Allow-Origin', getAllowOrigin(req));
     res.header('Access-Control-Allow-Methods', 'GET');
     res.header('Access-Control-Allow-Credentials', 'true');
     next();

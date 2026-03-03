@@ -31,6 +31,7 @@ const productSchema = new mongoose.Schema({
     originalPrice: { type: Number, default: null },
     discountPercentage: { type: Number, default: 0, min: 0, max: 100 },
     isOnSale: { type: Boolean, default: false },
+    isFeatured: { type: Boolean, default: false },
     countInStock: { type: Number, required: true, default: 0 },
 }, {
     timestamps: true,

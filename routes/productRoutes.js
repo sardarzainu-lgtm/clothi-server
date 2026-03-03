@@ -73,6 +73,7 @@ router.post('/', protect, admin, auditLog('PRODUCT_CREATE', 'Product'), asyncHan
         image: '/images/sample.jpg',
         brand: 'Sample brand',
         category: 'Sample category',
+        isFeatured: false,
         countInStock: 0,
         numReviews: 0,
         description: 'Sample description',
@@ -104,6 +105,7 @@ router.put('/:id', [
         originalPrice,
         discountPercentage,
         isOnSale,
+        isFeatured,
         description,
         image,
         brand,
@@ -124,6 +126,7 @@ router.put('/:id', [
     if (originalPrice !== undefined) product.originalPrice = originalPrice ? parseFloat(originalPrice) : null;
     if (discountPercentage !== undefined) product.discountPercentage = Math.max(0, Math.min(100, parseFloat(discountPercentage) || 0));
     if (isOnSale !== undefined) product.isOnSale = Boolean(isOnSale);
+    if (isFeatured !== undefined) product.isFeatured = Boolean(isFeatured);
     if (description !== undefined) product.description = description.trim();
     if (image !== undefined) product.image = image.trim();
     if (brand !== undefined) product.brand = brand.trim();
