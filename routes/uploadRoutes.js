@@ -7,8 +7,11 @@ const router = express.Router();
 const { protect, admin } = require('../middleware/authMiddleware.js');
 const { auditLog } = require('../middleware/auditMiddleware.js');
 const { generateImageSizes } = require('../utils/imageOptimizer.js');
+const { isCloudinaryConfigured, uploadBufferToCloudinary } = require('../utils/cloudinaryUpload.js');
 
-const storage = multer.diskStorage({
+// Use memory storage when Cloudinary is configured (e.g. Hostinger) so uploads persist across redeploys
+const memoryStorage = multer.memoryStorage();
+const diskStorage = multer.diskStorage({
     destination(req, file, cb) {
         cb(null, 'uploads/');
     },
@@ -19,6 +22,8 @@ const storage = multer.diskStorage({
         );
     },
 });
+
+const storage = isCloudinaryConfigured() ? memoryStorage : diskStorage;
 
 function checkFileType(file, cb) {
     // Allow all common image formats including less common ones
@@ -63,25 +68,36 @@ router.post('/', protect, admin, upload.single('image'), auditLog('FILE_UPLOAD',
     const dangerousExtensions = ['.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js', '.jar', '.sh', '.php', '.asp', '.aspx', '.jsp'];
     
     if (dangerousExtensions.includes(fileExtension)) {
-        // Delete the uploaded file if it's dangerous
-        await fs.unlink(req.file.path);
+        if (req.file.path) await fs.unlink(req.file.path).catch(() => {});
         res.status(400);
         throw new Error('File type not allowed for security reasons');
     }
     
+    // Cloudinary: upload buffer and return URLs (no local file; survives redeploys)
+    if (isCloudinaryConfigured() && req.file.buffer) {
+        try {
+            const result = await uploadBufferToCloudinary(req.file.buffer, req.file.originalname);
+            return res.json({
+                imageUrl: result.imageUrl,
+                images: result.images,
+                thumbnail: result.thumbnail,
+                medium: result.medium,
+                large: result.large,
+                original: result.original,
+            });
+        } catch (err) {
+            console.error('Cloudinary upload error:', err);
+            throw new Error('Image upload failed. Check Cloudinary configuration.');
+        }
+    }
+    
+    // Local disk: optimize and return /uploads/ paths
     try {
-        // Generate optimized image sizes
-        const baseFilename = req.file.filename.replace(/\.[^/.]+$/, ''); // Remove extension
+        const baseFilename = req.file.filename.replace(/\.[^/.]+$/, '');
         const optimizedImages = await generateImageSizes(req.file.path, baseFilename);
-        
-        // Delete original file to save space (optional - you can keep it if needed)
-        // await fs.unlink(req.file.path);
-        
-        // Return optimized image URLs
-        // Use medium as default, but provide all sizes for frontend to choose
         res.json({ 
             imageUrl: optimizedImages.medium || optimizedImages.original,
-            images: optimizedImages, // All sizes available
+            images: optimizedImages,
             thumbnail: optimizedImages.thumbnail,
             medium: optimizedImages.medium,
             large: optimizedImages.large,
@@ -89,7 +105,6 @@ router.post('/', protect, admin, upload.single('image'), auditLog('FILE_UPLOAD',
         });
     } catch (error) {
         console.error('Image optimization error:', error);
-        // Fallback to original file if optimization fails
         const relativePath = `/uploads/${req.file.filename}`;
         res.json({ imageUrl: relativePath, images: { original: relativePath } });
     }
