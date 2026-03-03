@@ -17,6 +17,7 @@ router.get('/', asyncHandler(async (req, res) => {
         // Return default settings if error
         res.json({ 
             heroImage: '',
+            heroImageMobile: '',
             heroHeading: 'RAMZAN SALE',
             heroDescription: 'Get up to **30% off** on new arrivals. Discover premium fashion that defines your style.',
             topBannerText: 'WINTER SALE: UP TO 30%-50% OFF',
@@ -29,15 +30,18 @@ router.get('/', asyncHandler(async (req, res) => {
 // @route   PUT /api/settings
 // @access  Private/Admin
 router.put('/', protect, admin, auditLog('SETTINGS_UPDATE', 'Settings'), asyncHandler(async (req, res) => {
-    const { heroImage, heroHeading, heroDescription, topBannerText, topBannerEnabled } = req.body;
+    const { heroImage, heroImageMobile, heroHeading, heroDescription, topBannerText, topBannerEnabled } = req.body;
 
     let settings = await Settings.findOne();
     
     if (!settings) {
-        settings = await Settings.create({ heroImage, heroHeading, heroDescription, topBannerText, topBannerEnabled });
+        settings = await Settings.create({ heroImage, heroImageMobile, heroHeading, heroDescription, topBannerText, topBannerEnabled });
     } else {
         if (heroImage !== undefined) {
             settings.heroImage = heroImage;
+        }
+        if (heroImageMobile !== undefined) {
+            settings.heroImageMobile = heroImageMobile;
         }
         if (heroHeading !== undefined) {
             settings.heroHeading = heroHeading;

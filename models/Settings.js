@@ -3,7 +3,11 @@ const mongoose = require('mongoose');
 const settingsSchema = new mongoose.Schema({
     heroImage: {
         type: String,
-        default: '/uploads/default-hero.jpg', // Default hero image path
+        default: '/uploads/default-hero.jpg', // Default hero image for desktop
+    },
+    heroImageMobile: {
+        type: String,
+        default: '', // Optional separate hero image for mobile view
     },
     heroHeading: {
         type: String,
