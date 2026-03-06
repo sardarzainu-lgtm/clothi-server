@@ -6,6 +6,13 @@ const Product = require('../models/Product.js');
 const { protect, admin } = require('../middleware/authMiddleware.js');
 const { auditLog } = require('../middleware/auditMiddleware.js');
 
+const normalizeImages = (images) => {
+    if (!Array.isArray(images)) return [];
+    return images
+        .map((img) => String(img || '').trim())
+        .filter(Boolean);
+};
+
 // @desc    Fetch all products
 // @route   GET /api/products
 // @access  Public
@@ -71,6 +78,7 @@ router.post('/', protect, admin, auditLog('PRODUCT_CREATE', 'Product'), asyncHan
         price: 0,
         user: req.user._id,
         image: '/images/sample.jpg',
+        images: ['/images/sample.jpg'],
         brand: 'Sample brand',
         category: 'Sample category',
         isFeatured: false,
@@ -92,6 +100,8 @@ router.put('/:id', [
     body('price').optional().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
     body('countInStock').optional().isInt({ min: 0 }).withMessage('Stock count must be a non-negative integer'),
     body('discountPercentage').optional().isFloat({ min: 0, max: 100 }).withMessage('Discount must be between 0 and 100'),
+    body('images').optional().isArray({ min: 1, max: 12 }).withMessage('Images must be an array with 1 to 12 items'),
+    body('images.*').optional().isString().withMessage('Each image must be a valid URL/path string'),
 ], protect, admin, auditLog('PRODUCT_UPDATE', 'Product'), asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -108,6 +118,7 @@ router.put('/:id', [
         isFeatured,
         description,
         image,
+        images,
         brand,
         category,
         countInStock,
@@ -128,7 +139,25 @@ router.put('/:id', [
     if (isOnSale !== undefined) product.isOnSale = Boolean(isOnSale);
     if (isFeatured !== undefined) product.isFeatured = Boolean(isFeatured);
     if (description !== undefined) product.description = description.trim();
-    if (image !== undefined) product.image = image.trim();
+    if (images !== undefined) {
+        const normalizedImages = normalizeImages(images);
+        product.images = normalizedImages;
+
+        // Keep main image aligned with available gallery images.
+        if (!normalizedImages.includes(product.image)) {
+            product.image = normalizedImages[0];
+        }
+    }
+    if (image !== undefined) {
+        const mainImage = image.trim();
+        if (mainImage) {
+            product.image = mainImage;
+            const currentImages = normalizeImages(product.images);
+            if (!currentImages.includes(mainImage)) {
+                product.images = [mainImage, ...currentImages];
+            }
+        }
+    }
     if (brand !== undefined) product.brand = brand.trim();
     if (category !== undefined) product.category = category.trim();
     if (countInStock !== undefined) product.countInStock = Math.max(0, parseInt(countInStock));
