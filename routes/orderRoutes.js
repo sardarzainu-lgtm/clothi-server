@@ -4,18 +4,23 @@ const asyncHandler = require('express-async-handler');
 const { body, param, validationResult } = require('express-validator');
 const Order = require('../models/Order.js');
 const { protect, admin } = require('../middleware/authMiddleware.js');
-const { auditLog } = require('../middleware/auditMiddleware.js');
 
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private
-router.post('/', [
+const createOrderValidators = [
     body('orderItems').isArray({ min: 1 }).withMessage('Order must have at least one item'),
     body('shippingAddress').isObject().withMessage('Shipping address is required'),
+    body('shippingAddress.firstName').notEmpty().withMessage('First name is required'),
+    body('shippingAddress.lastName').notEmpty().withMessage('Last name is required'),
+    body('shippingAddress.address').notEmpty().withMessage('Address is required'),
+    body('shippingAddress.city').notEmpty().withMessage('City is required'),
+    body('shippingAddress.postalCode').notEmpty().withMessage('Postal code is required'),
+    body('shippingAddress.phoneNumber').notEmpty().withMessage('Phone number is required'),
+    body('shippingAddress.customerEmail').optional().isEmail().withMessage('Valid customer email is required'),
     body('paymentMethod').notEmpty().withMessage('Payment method is required'),
     body('itemsPrice').isFloat({ min: 0 }).withMessage('Items price must be a positive number'),
     body('totalPrice').isFloat({ min: 0 }).withMessage('Total price must be a positive number'),
-], protect, asyncHandler(async (req, res) => {
+];
+
+const createOrder = async (req, res, userId = null, fallbackEmail = '') => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         res.status(400);
@@ -27,7 +32,6 @@ router.post('/', [
         shippingAddress,
         paymentMethod,
         itemsPrice,
-        taxPrice,
         shippingPrice,
         totalPrice,
     } = req.body;
@@ -37,19 +41,47 @@ router.post('/', [
         throw new Error('No order items');
     }
 
+    if (paymentMethod !== 'COD') {
+        res.status(400);
+        throw new Error('Only Cash on Delivery is supported');
+    }
+
+    const customerEmail = shippingAddress?.customerEmail || fallbackEmail;
+    if (!customerEmail) {
+        res.status(400);
+        throw new Error('Customer email is required');
+    }
+
     const order = new Order({
         orderItems,
-        user: req.user._id,
-        shippingAddress,
-        paymentMethod,
+        ...(userId ? { user: userId } : {}),
+        shippingAddress: {
+            ...shippingAddress,
+            customerEmail,
+        },
+        paymentMethod: 'COD',
         itemsPrice,
-        taxPrice,
+        taxPrice: 0,
         shippingPrice,
         totalPrice,
     });
 
     const createdOrder = await order.save();
     res.status(201).json(createdOrder);
+};
+
+// @desc    Create new order (guest checkout)
+// @route   POST /api/orders/guest
+// @access  Public
+router.post('/guest', createOrderValidators, asyncHandler(async (req, res) => {
+    await createOrder(req, res);
+}));
+
+// @desc    Create new order (authenticated)
+// @route   POST /api/orders
+// @access  Private
+router.post('/', createOrderValidators, protect, asyncHandler(async (req, res) => {
+    await createOrder(req, res, req.user._id, req.user.email);
 }));
 
 // @desc    Get logged in user orders
@@ -82,10 +114,12 @@ router.get('/:id', [
         throw new Error('Order not found');
     }
 
-    // Security: Check if user owns the order OR is admin
-    if (order.user._id.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-        res.status(403);
-        throw new Error('Not authorized to access this order');
+    // Security: Non-admin users can only access their own linked orders.
+    if (!req.user.isAdmin) {
+        if (!order.user || order.user._id.toString() !== req.user._id.toString()) {
+            res.status(403);
+            throw new Error('Not authorized to access this order');
+        }
     }
 
     res.json(order);
@@ -93,11 +127,11 @@ router.get('/:id', [
 
 // @desc    Update order to paid
 // @route   PUT /api/orders/:id/pay
-// @access  Private
+// @access  Private/Admin
 router.put('/:id/pay', [
     param('id').isMongoId().withMessage('Invalid order ID'),
     body('transactionId').optional().trim().isLength({ min: 1 }).withMessage('Transaction ID must not be empty'),
-], protect, asyncHandler(async (req, res) => {
+], protect, admin, asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         res.status(400);
@@ -109,12 +143,6 @@ router.put('/:id/pay', [
     if (!order) {
         res.status(404);
         throw new Error('Order not found');
-    }
-
-    // Security: Check if user owns the order OR is admin
-    if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-        res.status(403);
-        throw new Error('Not authorized to update this order');
     }
 
     // Prevent double payment

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const orderSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
-        required: true,
+        required: false,
         ref: 'User',
     },
     orderItems: [
@@ -28,6 +28,7 @@ const orderSchema = new mongoose.Schema({
         city: { type: String, required: true },
         postalCode: { type: String, required: true },
         phoneNumber: { type: String, required: true },
+        customerEmail: { type: String },
     },
     paymentMethod: { type: String, required: true },
     paymentResult: {
@@ -37,6 +38,7 @@ const orderSchema = new mongoose.Schema({
         email_address: { type: String },
         transactionId: { type: String }, // For manual payments
     },
+    itemsPrice: { type: Number, required: true, default: 0.0 },
     taxPrice: { type: Number, required: true, default: 0.0 },
     shippingPrice: { type: Number, required: true, default: 0.0 },
     totalPrice: { type: Number, required: true, default: 0.0 },

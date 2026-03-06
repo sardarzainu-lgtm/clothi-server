@@ -4,7 +4,7 @@ const reviewSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true,
+        required: false,
     },
     product: {
         type: mongoose.Schema.Types.ObjectId,
@@ -20,6 +20,26 @@ const reviewSchema = new mongoose.Schema({
     comment: {
         type: String,
         required: true,
+    },
+    guestName: {
+        type: String,
+    },
+    guestEmail: {
+        type: String,
+        lowercase: true,
+        trim: true,
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+    },
+    moderatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    },
+    moderatedAt: {
+        type: Date,
     },
 }, {
     timestamps: true,
