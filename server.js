@@ -21,6 +21,8 @@ if (!process.env.MONGO_URI) {
 }
 
 const app = express();
+// Required for correct client IP detection behind Hostinger/reverse proxies
+app.set('trust proxy', 1);
 
 // CORS: allow one origin (CLIENT_URL) or several (comma-separated), e.g. "http://localhost:5173,https://dimgrey-alligator-158844.hostingersite.com"
 const allowedOrigins = process.env.CLIENT_URL
@@ -57,20 +59,31 @@ app.use(helmet({
 
 // Rate Limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    windowMs: Number(process.env.API_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000), // 15 minutes
+    max: Number(process.env.API_RATE_LIMIT_MAX || 800),
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.method === 'OPTIONS',
+    keyGenerator: (req) =>
+        req.headers['cf-connecting-ip'] ||
+        (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : null) ||
+        req.ip,
+    skip: (req) =>
+        req.method === 'OPTIONS' ||
+        req.path.startsWith('/users/login') ||
+        req.path.startsWith('/users/admin-login'),
 });
 
 // Stricter rate limiting for authentication endpoints
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Limit each IP to 5 requests per windowMs
+    windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000), // 15 minutes
+    max: Number(process.env.AUTH_RATE_LIMIT_MAX || 10),
     message: 'Too many authentication attempts, please try again after 15 minutes.',
     skipSuccessfulRequests: true,
+    keyGenerator: (req) =>
+        req.headers['cf-connecting-ip'] ||
+        (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : null) ||
+        req.ip,
     skip: (req) => req.method === 'OPTIONS',
 });
 
