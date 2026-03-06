@@ -22,6 +22,25 @@ if (!process.env.MONGO_URI) {
 
 const app = express();
 
+// CORS: allow one origin (CLIENT_URL) or several (comma-separated), e.g. "http://localhost:5173,https://dimgrey-alligator-158844.hostingersite.com"
+const allowedOrigins = process.env.CLIENT_URL
+    ? process.env.CLIENT_URL.split(',').map(s => s.trim()).filter(Boolean)
+    : ['http://localhost:5173'];
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) callback(null, origin || allowedOrigins[0]);
+        else callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    optionsSuccessStatus: 200,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Content-Type', 'Content-Length'],
+};
+// Keep CORS before limiters so even blocked responses carry CORS headers
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 // Security Middleware - Must be first
 app.use(helmet({
     contentSecurityPolicy: {
@@ -43,6 +62,7 @@ const limiter = rateLimit({
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.method === 'OPTIONS',
 });
 
 // Stricter rate limiting for authentication endpoints
@@ -51,11 +71,12 @@ const authLimiter = rateLimit({
     max: 5, // Limit each IP to 5 requests per windowMs
     message: 'Too many authentication attempts, please try again after 15 minutes.',
     skipSuccessfulRequests: true,
+    skip: (req) => req.method === 'OPTIONS',
 });
 
 app.use('/api/', limiter);
 app.use('/api/users/login', authLimiter);
-app.use('/api/users', authLimiter); // Registration endpoint
+app.use('/api/users/admin-login', authLimiter);
 
 // Data Sanitization - Prevent NoSQL Injection
 app.use(mongoSanitize());
@@ -69,21 +90,6 @@ app.use(hpp());
 // Body Parser with size limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// CORS: allow one origin (CLIENT_URL) or several (comma-separated), e.g. "http://localhost:5173,https://dimgrey-alligator-158844.hostingersite.com"
-const allowedOrigins = process.env.CLIENT_URL
-    ? process.env.CLIENT_URL.split(',').map(s => s.trim()).filter(Boolean)
-    : ['http://localhost:5173'];
-const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) callback(null, origin || allowedOrigins[0]);
-        else callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    optionsSuccessStatus: 200,
-    exposedHeaders: ['Content-Type', 'Content-Length'],
-};
-app.use(cors(corsOptions));
 
 // Database Connection
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/ecommerce')
